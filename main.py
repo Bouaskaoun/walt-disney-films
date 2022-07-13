@@ -1,17 +1,24 @@
 from bs4 import BeautifulSoup as bs
 import requests
 import json
+from pprint import pprint
 
 list_movies_path = "https://en.wikipedia.org/wiki/List_of_Walt_Disney_Pictures_films"
 list_movies_html = requests.get(list_movies_path).content
 soup = bs(list_movies_html, features="html.parser")
-movie_detial = soup.find('table', class_='wikitable sortable').find_all('i')
-movies_links = [movie.a['href'] for movie in movie_detial]
+movies = soup.select(".wikitable.sortable i a")
+
+
+def clean_tags(soup):
+    for tag in soup.find_all(["sup"]):
+        tag.decompose()
 
 def get_row_info(row_data):
     if row_data.find('li'):
         return [li.get_text(" ", strip=True).replace('\xa0', ' ') for li in row_data.find_all('li')]
-    else:
+    elif row_data.find('br'):
+        return [text for text in row_data.stripped_strings]
+    else:    
         return row_data.get_text(" ", strip=True).replace('\xa0', ' ')
 
 def get_movie_info(relative_path):
@@ -19,8 +26,10 @@ def get_movie_info(relative_path):
     path = base_path + relative_path
     movie_html = requests.get(path).content
     soup = bs(movie_html, features="html.parser")
-    info_box = soup.find('table', class_='infobox vevent')
-    info_rows = info_box.find_all('tr')
+    info_rows = []
+    if soup.find('table', class_='infobox') != None:
+        info_rows = soup.find('table', class_='infobox').find_all('tr')
+    clean_tags(soup)
     movie_info = {}
     for index, row in enumerate(info_rows):
         if index == 0:
@@ -28,17 +37,33 @@ def get_movie_info(relative_path):
         elif index == 1:
             continue
         else:
-            key = row.find('th').get_text(" ", strip=True)
-            value = get_row_info(row.find('td'))
-            movie_info[key]= value
+            key = 'key'
+            value = 'val'
+            if row.find('th') != None:
+                key = row.find('th').get_text(" ", strip=True)
+            if row.find('td') != None:
+                value = get_row_info(row.find('td'))
+            if key != 'key':
+                movie_info[key]= value
     return movie_info
+
+#pprint(get_movie_info('/wiki/The_Great_Locomotive_Chase'))
 
 list_movies_info = []
 def fill_list_movies_info():
-    for movie_link in movies_links:
-        list_movies_info.append(get_movie_info(movie_link))
+    for index, movie in enumerate(movies):
+        if index % 10 == 0:
+            print(index)
+        try:
+            relative_path = movie['href']
+            list_movies_info.append(get_movie_info(relative_path))
+            
+        except Exception as e:
+            print(movie.get_text())
+            print(e)
+    
 
-#fill_list_movies_info()
+fill_list_movies_info()
 
 def save_data(title, data):
     with open(title, 'w', encoding='utf-8') as f:
@@ -49,3 +74,5 @@ def load_data(title):
         return json.load(f)
 
 save_data("disney_data.json", list_movies_info)
+
+movie_info_list = load_data("disney_data.json")
