@@ -4,6 +4,8 @@ import json
 import re
 from datetime import datetime
 import pickle
+import urllib
+import pandas as pd
 from pprint import pprint
 
 list_movies_path = "https://en.wikipedia.org/wiki/List_of_Walt_Disney_Pictures_films"
@@ -50,8 +52,6 @@ def get_movie_info(relative_path):
                 movie_info[key]= value
     return movie_info
 
-#pprint(get_movie_info('/wiki/The_Great_Locomotive_Chase'))
-
 list_movies_info = []
 def fill_list_movies_info():
     for index, movie in enumerate(movies):
@@ -64,9 +64,8 @@ def fill_list_movies_info():
         except Exception as e:
             print(movie.get_text())
             print(e)
-    
 
-#fill_list_movies_info()
+fill_list_movies_info()
 
 def save_data(title, data):
     with open(title, 'w', encoding='utf-8') as f:
@@ -76,7 +75,7 @@ def load_data(title):
     with open(title, encoding="utf-8") as f:
         return json.load(f)
 
-#save_data("disney_data.json", list_movies_info)
+save_data("disney_data.json", list_movies_info)
 
 movie_info_list = load_data("disney_data.json")
 
@@ -179,4 +178,51 @@ def load_data_pickle(name):
 
 save_data_pickle("disney_movie_data_cleaned.pickle", movie_info_list)
 
-a = load_data_pickle("disney_movie_data_cleaned.pickle")
+movie_info_list = load_data_pickle('disney_movie_data_cleaned.pickle')
+
+def add_imdb_columns():
+    def get_omdb_info(title):
+        base_url = "http://www.omdbapi.com/?"
+        parameters = {"apikey": 'd3d70abf', 't': title}
+        params_encoded = urllib.parse.urlencode(parameters)
+        full_url = base_url + params_encoded
+        return requests.get(full_url).json()
+
+    def get_rotten_tomato_score(omdb_info):
+        ratings = omdb_info.get('Ratings', [])
+        for rating in ratings:
+            if rating['Source'] == 'Rotten Tomatoes':
+                return rating['Value']
+        return None
+    
+    for movie in movie_info_list:
+        if movie.get('title') != None:
+            title = movie['title']
+            omdb_info = get_omdb_info(title)
+            movie['imdb'] = omdb_info.get('imdbRating', None)
+            movie['metascore'] = omdb_info.get('Metascore', None)
+            movie['rotten_tomatoes'] = get_rotten_tomato_score(omdb_info)
+
+add_imdb_columns()
+
+save_data_pickle('disney_movie_data_final.pickle', movie_info_list)
+
+movie_info_list = load_data_pickle('disney_movie_data_final.pickle')
+
+def save_data_as_json():
+    movie_info_copy = [movie.copy() for movie in movie_info_list]
+
+    for movie in movie_info_copy:
+        current_date = movie['Release date (datetime)']
+        if current_date:
+            movie['Release date (datetime)'] = current_date.strftime("%B %d, %Y")
+        else:
+            movie['Release date (datetime)'] = None
+
+    save_data("disney_data_final.json", movie_info_copy)
+
+save_data_as_json()
+
+df = pd.DataFrame(movie_info_list)
+
+df.to_csv("disney_movie_data_final.csv")
